@@ -2,18 +2,25 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// Input handler which lets you control the player (or ant future objects who have a working character controller and playerinfo)
+/// </summary>
 public class InputHandler : MonoBehaviour
 {
     [SerializeField]
     GameObject currentlyControlled;
-    [SerializeField]
-    Rigidbody rb;
 
     PlayerInfo playerInfo;
+
+    CharacterController controller;
 
     float jumpHeight;
 
     float speed;
+
+    float fallMultiplier;
+
+    float lowJumpMultiplier;
 
     Camera cam;
 
@@ -21,68 +28,95 @@ public class InputHandler : MonoBehaviour
 
     Vector3 playerMovement;
 
-    float turnSmoothTime = 0.1f;
+    Vector3 velocity;
+
+
+    public float gravity = -9.81f;
+    //How smoothly the player turns
+    public float turnSmoothTime = 0.1f;
     float turnSmoothVelocity;
 
+    //Which object is currently controlled
     public GameObject CurrentlyControlled { get => currentlyControlled; set => currentlyControlled = value; }
 
     private void Start()
     {
-        jump = new PerformJump();
-        rb = currentlyControlled.GetComponent<Rigidbody>();
+        //For command pattern, ignore for now
+        //jump = new PerformJump();
+
         playerInfo = currentlyControlled.GetComponent<PlayerInfo>();
 
         jumpHeight = playerInfo.JumpHeight;
         speed = playerInfo.Speed;
+        fallMultiplier = playerInfo.FallMultiplier;
         cam = playerInfo.PlayerCamera;
+        lowJumpMultiplier = playerInfo.LowJumpMultiplier;
 
-        rb.freezeRotation = true;
+        controller = currentlyControlled.GetComponent<CharacterController>();
+
     }
 
     private void Update()
     {
+        //Check if grounded, and make it so velocity does not increase infinitely
+        if (playerInfo.IsGrounded == true && velocity.y < 0)
+        {
+            velocity.y = -2f;
+        }
+
+        //Jump
         if (Input.GetButtonDown("Jump") && playerInfo.IsGrounded == true)
         {
-            //REMOVE AFTER FINDING GOOD JUMP HEIGHT
+            //REMOVE AFTER FINDING GOOD JUMP HEIGHT, AS IT IS FOR REAL TIME JUMP HEIGHT CHANGES IN PLAYERINFO
             jumpHeight = playerInfo.JumpHeight;
 
-            jump.Execute(rb, jumpHeight);
+            velocity.y = Mathf.Sqrt(jumpHeight * -2f * gravity);
+
+            //Command pattern stuff, ignore for now
+            //jump.Execute(jumpHeight);
         }
 
-        float hor = Input.GetAxis("Horizontal");
-        float ver = Input.GetAxis("Vertical");
-        Debug.Log(hor);
+        //Buttons axis for moving (so this also works for controller ... so far
+        float horizontal = Input.GetAxisRaw("Horizontal");
+        float vertical = Input.GetAxisRaw("Vertical");
 
-        playerMovement = new Vector3(hor, 0, ver).normalized;
+        //Normalizing so that moving diagonally would not be faster
+        Vector3 direction = new Vector3(horizontal, 0f, vertical).normalized;
 
-        
-        
-
-    }
-
-    private void FixedUpdate()
-    {
-        //currentlyControlled.transform.LookAt(currentlyControlled.transform.position + new Vector3(playerMovement.x, 0, playerMovement.z));
-
-        
-
-        //float angle = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetAngle, ref turnSmoothVelocity, turnSmoothTime);
-
-        
-
-        if (playerMovement.magnitude > 0.1f)
+        //When an axis is pressed, it will have a magnitude
+        if(direction.magnitude >= 0.1f)
         {
+            //Get rotation angle towards movement direction, offset by camera direction
+            float targetAngle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg + cam.transform.eulerAngles.y;
 
-            float targetAngle = Mathf.Atan2(playerMovement.x, playerMovement.z) * Mathf.Rad2Deg + cam.transform.eulerAngles.y;
-            currentlyControlled.transform.rotation = Quaternion.Euler(0f, targetAngle, 0f);
+            //Do that smoothly
+            float angle = Mathf.SmoothDampAngle(CurrentlyControlled.transform.eulerAngles.y, targetAngle, ref turnSmoothVelocity, turnSmoothTime);
 
-            Vector3 moveDir = Quaternion.Euler(0f, targetAngle, 0f) * Vector3.forward;
-            rb.AddForce(moveDir * speed, ForceMode.Force);
+            //Rotate
+            currentlyControlled.transform.rotation = Quaternion.Euler(0f, angle, 0f);
+
+            //Make movement camera-dependant
+            Vector3 moveDirection = Quaternion.Euler(0f, targetAngle, 0f) * Vector3.forward;
+
+            //Move
+            controller.Move(moveDirection * speed * Time.deltaTime);
         }
-        else
+
+        //Add gravity over time
+        velocity.y += gravity * Time.deltaTime;
+
+        //Make the jumps more videogame-y, so that if you hold the jump button the gravity is weaker, mario style
+        if (velocity.y < 0)
         {
-            
+            velocity += Vector3.up * Physics.gravity.y * (fallMultiplier - 1) * Time.deltaTime;
         }
+        else if (velocity.y > 0 && !Input.GetButton("Jump"))
+        {
+            velocity += Vector3.up * Physics.gravity.y * (lowJumpMultiplier - 1) * Time.deltaTime;
+        }
+
+        //Add gravity to movement
+        controller.Move( new Vector3(0, velocity.y) * Time.deltaTime);
 
 
     }
