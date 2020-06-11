@@ -58,6 +58,9 @@ public class InputHandler : MonoBehaviour
 
     private void Update()
     {
+        ///For in-game speed changing
+        speed = playerInfo.Speed;
+
         //Check if grounded, and make it so velocity does not increase infinitely
         if (playerInfo.IsGrounded == true && velocity.y < 0)
         {
@@ -116,7 +119,7 @@ public class InputHandler : MonoBehaviour
         }
 
         //Add gravity to movement
-        controller.Move( new Vector3(0, velocity.y) * Time.deltaTime);
+        controller.Move( velocity * Time.deltaTime);
 
 
     }
